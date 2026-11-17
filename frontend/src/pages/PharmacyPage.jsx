@@ -136,10 +136,10 @@ const PharmacyPage = () => {
     }
   }, []);
 
-  // Trigger initial check on load
+  // Re-check interactions whenever the pillbox changes (including initial load)
   useEffect(() => {
     checkInteractions(pillbox);
-  }, [checkInteractions]);
+  }, [checkInteractions, pillbox]);
 
   const handleAddToPillbox = (medicine) => {
     if (!medicine) return;
@@ -151,14 +151,12 @@ const PharmacyPage = () => {
     setPillbox(updated);
     localStorage.setItem('firstaid_pillbox', JSON.stringify(updated));
     setError('');
-    checkInteractions(updated);
   };
 
   const handleRemoveFromPillbox = (medId) => {
     const updated = pillbox.filter(m => m.id !== medId);
     setPillbox(updated);
     localStorage.setItem('firstaid_pillbox', JSON.stringify(updated));
-    checkInteractions(updated);
   };
 
   const handlePillboxSearchChange = async (val) => {
