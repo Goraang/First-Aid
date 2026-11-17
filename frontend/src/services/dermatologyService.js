@@ -1,11 +1,13 @@
 import { uploadFile } from './api';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
 export const analyzeSkinImage = async (imageFile) => {
   try {
     const formData = new FormData();
     formData.append('image', imageFile);
 
-    const response = await fetch('http://localhost:5000/api/dermatology/analyze', {
+    const response = await fetch(`${API_BASE_URL}/api/dermatology/analyze`, {
       method: 'POST',
       body: formData,
       headers: {
@@ -25,7 +27,7 @@ export const analyzeSkinImage = async (imageFile) => {
 
 export const getSkinConditions = async () => {
   try {
-    const response = await fetch('http://localhost:5000/api/dermatology/conditions', {
+    const response = await fetch(`${API_BASE_URL}/api/dermatology/conditions`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }

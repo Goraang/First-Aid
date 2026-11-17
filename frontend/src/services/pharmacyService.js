@@ -1,9 +1,11 @@
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
 export const scanPrescription = async (prescriptionFile) => {
   try {
     const formData = new FormData();
-    formData.append('prescription', prescriptionFile);
+    formData.append('image', prescriptionFile);
 
-    const response = await fetch('http://localhost:5000/api/pharmacy/scan-prescription', {
+    const response = await fetch(`${API_BASE_URL}/api/pharmacy/scan`, {
       method: 'POST',
       body: formData,
       headers: {
@@ -25,7 +27,7 @@ export const scanPrescription = async (prescriptionFile) => {
 export const searchMedicines = async (query) => {
   try {
     const response = await fetch(
-      `http://localhost:5000/api/pharmacy/search?q=${encodeURIComponent(query)}`,
+      `${API_BASE_URL}/api/pharmacy/search?q=${encodeURIComponent(query)}`,
       {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -46,7 +48,7 @@ export const searchMedicines = async (query) => {
 
 export const getMedicines = async () => {
   try {
-    const response = await fetch('http://localhost:5000/api/pharmacy/medicines', {
+    const response = await fetch(`${API_BASE_URL}/api/pharmacy/medicines`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }

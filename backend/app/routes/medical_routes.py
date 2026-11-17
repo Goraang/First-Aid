@@ -29,6 +29,7 @@ from app.services.api_enrichment_service import (
     get_covid_global_stats,
     get_disease_country_stats,
 )
+from app.services.gemini_service import analyze_symptoms_with_gemini
 from app.services.skin_analysis_service import analyze_skin_condition
 
 medical_bp = Blueprint('medical', __name__)
@@ -77,13 +78,21 @@ def analyze_symptoms_endpoint():
         if len(symptoms) < 3:
             return jsonify({'error': 'Please provide a more detailed symptom description'}), 400
 
-        # Run analysis
-        result = analyze_symptoms(
-            symptom_text=symptoms,
+        # Run analysis via Gemini (with fallback to local if needed)
+        gemini_result = analyze_symptoms_with_gemini(
+            symptoms=symptoms,
             body_part=body_part,
-            category_filter=category,
-            top_n=min(top_n, 10)
+            category=category
         )
+        if gemini_result and not gemini_result.get('error'):
+            result = gemini_result
+        else:
+            result = analyze_symptoms(
+                symptom_text=symptoms,
+                body_part=body_part,
+                category_filter=category,
+                top_n=min(top_n, 10)
+            )
 
         # Store in history
         email = get_jwt_identity()

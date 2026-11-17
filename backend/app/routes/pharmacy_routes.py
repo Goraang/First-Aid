@@ -20,6 +20,7 @@ from app.services.nlp_service import (
     compare_medicines_by_salt,
     find_medicines_for_skin_condition,
 )
+from app.services.gemini_service import analyze_medicine_image_with_gemini, search_medicines_with_gemini
 from datetime import datetime
 import logging
 
@@ -91,84 +92,92 @@ def scan_medicine():
         logger.info(f"Scanning medicine image: {filename}")
 
         try:
-            # ── Step 1: OCR extraction ────────────────────────
-            extracted_text = extract_text_from_image(filepath)
+            # ── Direct Gemini Vision Analysis ───────────────────
+            gemini_result = analyze_medicine_image_with_gemini(filepath)
+            
+            if gemini_result and not gemini_result.get('error'):
+                best_match = {
+                    'id': f"gemini_{datetime.now().timestamp()}",
+                    'name': gemini_result.get('name'),
+                    'generic_name': gemini_result.get('generic_name'),
+                    'salt_composition': gemini_result.get('salt_composition'),
+                    'type': gemini_result.get('dosage_form', 'Tablet'),
+                    'usage': gemini_result.get('usage', ''),
+                    'dosage': gemini_result.get('dosage', ''),
+                    'side_effects': gemini_result.get('side_effects', []),
+                    'warnings': gemini_result.get('warnings', []),
+                    'price_inr': gemini_result.get('price_inr', 'N/A'),
+                    'confidence': gemini_result.get('confidence', 0.95),
+                    'match_method': 'gemini_multimodal_vision'
+                }
+                detected_name = gemini_result.get('name')
+                detected_salt = gemini_result.get('salt_composition')
+                detected_strength = gemini_result.get('strength')
+                ocr_conf = 0.95
+                extracted_text = f"{detected_name} - {detected_salt}"
+                similar = gemini_result.get('alternatives', [])
+            else:
+                # Fallback to local OCR + DB matching if Gemini fails
+                extracted_text = extract_text_from_image(filepath)
 
-            if not extracted_text or len(extracted_text.strip()) < 3:
-                return jsonify({
-                    'error': 'Could not extract text from image. '
-                             'Please upload a clearer, well-lit photo of the medicine label.',
-                    'tip': 'Ensure the text on the medicine is in focus and not obscured.'
-                }), 400
+                if not extracted_text or len(extracted_text.strip()) < 3:
+                    return jsonify({
+                        'error': 'Could not extract text from image. '
+                                 'Please upload a clearer, well-lit photo of the medicine label.',
+                        'tip': 'Ensure the text on the medicine is in focus and not obscured.'
+                    }), 400
 
-            # ── Step 2: Extract structured info from OCR text ─
-            detected_salt = extract_salt_composition(extracted_text)
-            detected_name = extract_medicine_name(extracted_text)
-            detected_strength = extract_dosage_strength(extracted_text)
-            ocr_conf = get_ocr_confidence(extracted_text)
+                detected_salt = extract_salt_composition(extracted_text)
+                detected_name = extract_medicine_name(extracted_text)
+                detected_strength = extract_dosage_strength(extracted_text)
+                ocr_conf = get_ocr_confidence(extracted_text)
 
-            logger.info(
-                f"OCR result: name='{detected_name}', "
-                f"salt='{detected_salt}', "
-                f"strength='{detected_strength}', "
-                f"ocr_confidence={ocr_conf:.2f}"
-            )
+                medicines = load_medicines_db()
+                best_match = find_best_medicine_match(
+                    extracted_text,
+                    medicines,
+                    threshold=0.30,
+                    salt_hint=detected_salt,
+                )
 
-            # ── Step 3: NLP matching against medicines DB ──────
-            medicines = load_medicines_db()
-            best_match = find_best_medicine_match(
-                extracted_text,
-                medicines,
-                threshold=0.30,
-                salt_hint=detected_salt,
-            )
+                if not best_match and detected_name:
+                    name_l = detected_name.lower()
+                    for med in medicines:
+                        all_names = (
+                            [med.get('name', ''), med.get('generic_name', '')] +
+                            med.get('brand_names', []) +
+                            [med.get('salt_composition', '')]
+                        )
+                        if any(name_l in n.lower() for n in all_names if n):
+                            best_match = dict(med)
+                            best_match['confidence'] = 0.65
+                            best_match['match_method'] = 'name_search_fallback'
+                            break
 
-            # ── Step 4: If no match, try searching by detected name ─
-            if not best_match and detected_name:
-                name_l = detected_name.lower()
-                for med in medicines:
-                    all_names = (
-                        [med.get('name', ''), med.get('generic_name', '')] +
-                        med.get('brand_names', []) +
-                        [med.get('salt_composition', '')]
-                    )
-                    if any(name_l in n.lower() for n in all_names if n):
-                        best_match = dict(med)
-                        best_match['confidence'] = 0.65
-                        best_match['match_method'] = 'name_search_fallback'
-                        break
+                if not best_match:
+                    return jsonify({
+                        'success': True,
+                        'warning': 'Medicine not found',
+                        'extracted_text': extracted_text[:500],
+                        'detected_salt': detected_salt,
+                        'detected_name': detected_name,
+                        'detected_strength': detected_strength,
+                        'ocr_confidence': ocr_conf,
+                    }), 200
 
-            if not best_match:
-                return jsonify({
-                    'success': True,
-                    'warning': 'Medicine not found in database',
-                    'extracted_text': extracted_text[:500],
-                    'detected_salt': detected_salt,
-                    'detected_name': detected_name,
-                    'detected_strength': detected_strength,
-                    'ocr_confidence': ocr_conf,
-                    'suggestion': (
-                        'The medicine label text was extracted but could not be matched. '
-                        'Try /api/pharmacy/search with the medicine name, or '
-                        '/api/pharmacy/compare-by-salt with the active ingredient.'
-                    )
-                }), 200
-
-            # ── Step 5: Enrich with similar-salt alternatives ──
-            salt_for_comparison = (
-                best_match.get('salt_composition') or
-                best_match.get('generic_name') or
-                detected_salt or
-                best_match.get('name', '')
-            )
-            alternatives_result = compare_medicines_by_salt(
-                salt_for_comparison, medicines, top_n=5
-            )
-            # Exclude the matched medicine itself from alternatives
-            similar = [
-                m for m in alternatives_result.get('medicines', [])
-                if m.get('id') != best_match.get('id')
-            ][:4]
+                salt_for_comparison = (
+                    best_match.get('salt_composition') or
+                    best_match.get('generic_name') or
+                    detected_salt or
+                    best_match.get('name', '')
+                )
+                alternatives_result = compare_medicines_by_salt(
+                    salt_for_comparison, medicines, top_n=5
+                )
+                similar = [
+                    m for m in alternatives_result.get('medicines', [])
+                    if m.get('id') != best_match.get('id')
+                ][:4]
 
             # ── Step 6: Save to history ────────────────────────
             if email not in pharmacy_history:

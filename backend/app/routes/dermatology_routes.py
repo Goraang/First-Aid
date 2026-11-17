@@ -13,6 +13,7 @@ from app.services.skin_analysis_service import (
     get_alternative_medicines_for_condition,
     get_treatment_recommendations,
 )
+from app.services.gemini_service import analyze_skin_image_with_gemini
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -105,39 +106,58 @@ def analyze():
             }), 400
 
         try:
-            # ── Analyze skin condition ────────────────────────
-            if filepath:
-                analysis_result = analyze_skin_condition(filepath, body_part, symptom_text)
-                from app.services.skin_analysis_service import analyze_image_features
-                image_features = analyze_image_features(filepath)
-            else:
-                # Text-only analysis: use the medical analysis service
-                from app.services.medical_analysis_service import analyze_symptoms
-                text_result = analyze_symptoms(
-                    symptom_text=symptom_text or 'skin rash',
-                    body_part=body_part,
-                    category_filter='dermatology',
-                    top_n=5
-                )
-                # Convert to skin analysis format
-                top = text_result.get('top_match', {})
-                diseases_db = load_diseases_db()
-                matched_disease = next(
-                    (d for d in diseases_db if d.get('name', '').lower() == top.get('name', '').lower()),
-                    top
-                )
+            # ── Direct Gemini Vision & Symptoms Analysis ───────
+            gemini_result = analyze_skin_image_with_gemini(
+                image_path=filepath,
+                symptoms=symptom_text,
+                body_part=body_part
+            )
+
+            if gemini_result and not gemini_result.get('error'):
                 analysis_result = {
-                    'disease': matched_disease,
-                    'confidence': top.get('confidence', 0.60),
+                    'disease': gemini_result.get('disease', {}),
+                    'confidence': gemini_result.get('confidence', 0.92),
                     'body_part': body_part,
                     'analysis_timestamp': datetime.now().isoformat(),
-                    'top_alternatives': [
-                        {'name': a.get('name'), 'confidence': a.get('confidence')}
-                        for a in text_result.get('alternatives', [])[:4]
-                    ],
-                    'recommended_medicines': [],
-                    'alternative_medicines': [],
+                    'top_alternatives': gemini_result.get('top_alternatives', []),
+                    'recommended_medicines': gemini_result.get('recommended_medicines', []),
+                    'alternative_medicines': gemini_result.get('alternative_medicines', []),
+                    'treatments': gemini_result.get('treatments', []),
+                    'lifestyle_tips': gemini_result.get('lifestyle_tips', []),
+                    'when_to_see_doctor': gemini_result.get('when_to_see_doctor', []),
                 }
+            else:
+                # Fallback to local heuristic analysis
+                if filepath:
+                    analysis_result = analyze_skin_condition(filepath, body_part, symptom_text)
+                    from app.services.skin_analysis_service import analyze_image_features
+                    image_features = analyze_image_features(filepath)
+                else:
+                    from app.services.medical_analysis_service import analyze_symptoms
+                    text_result = analyze_symptoms(
+                        symptom_text=symptom_text or 'skin rash',
+                        body_part=body_part,
+                        category_filter='dermatology',
+                        top_n=5
+                    )
+                    top = text_result.get('top_match', {})
+                    diseases_db = load_diseases_db()
+                    matched_disease = next(
+                        (d for d in diseases_db if d.get('name', '').lower() == top.get('name', '').lower()),
+                        top
+                    )
+                    analysis_result = {
+                        'disease': matched_disease,
+                        'confidence': top.get('confidence', 0.60),
+                        'body_part': body_part,
+                        'analysis_timestamp': datetime.now().isoformat(),
+                        'top_alternatives': [
+                            {'name': a.get('name'), 'confidence': a.get('confidence')}
+                            for a in text_result.get('alternatives', [])[:4]
+                        ],
+                        'recommended_medicines': [],
+                        'alternative_medicines': [],
+                    }
 
         finally:
             # Clean up uploaded file

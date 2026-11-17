@@ -7,7 +7,34 @@ import os
 auth_bp = Blueprint('auth', __name__)
 
 # Mock user database (in production, use a real database)
-users_db = {}
+users_db = {
+    'admin@example.com': {
+        'name': 'Admin User',
+        'email': 'admin@example.com',
+        'password': 'password123',
+        'created_at': datetime.now().isoformat(),
+        'scans': {'pharmacy': 0, 'dermatology': 0},
+        'dob': '',
+        'gender': '',
+        'phone': '',
+        'blood_type': 'O+',
+        'medical_history': '',
+        'allergies': ''
+    },
+    'test@example.com': {
+        'name': 'Test User',
+        'email': 'test@example.com',
+        'password': 'TestPassword123',
+        'created_at': datetime.now().isoformat(),
+        'scans': {'pharmacy': 0, 'dermatology': 0},
+        'dob': '',
+        'gender': '',
+        'phone': '',
+        'blood_type': 'O+',
+        'medical_history': '',
+        'allergies': ''
+    }
+}
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
