@@ -80,9 +80,9 @@ const Footer = () => {
             <ul style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               {['Documentation', 'API Reference', 'Help Center', 'Health Blog'].map((item, i) => (
                 <li key={i}>
-                  <a href="#" style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', transition: 'var(--transition-fast)', textDecoration: 'none', display: 'block' }}>
+                  <span style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', display: 'block' }}>
                     {item}
-                  </a>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -94,9 +94,9 @@ const Footer = () => {
             <ul style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               {['Privacy Policy', 'Terms of Service', 'HIPAA Compliance', 'Contact Us'].map((item, i) => (
                 <li key={i}>
-                  <a href="#" style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', transition: 'var(--transition-fast)', textDecoration: 'none', display: 'block' }}>
+                  <span style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', display: 'block' }}>
                     {item}
-                  </a>
+                  </span>
                 </li>
               ))}
             </ul>
